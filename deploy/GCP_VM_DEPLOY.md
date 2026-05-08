@@ -114,6 +114,17 @@ systemctl status arbbot.service --no-pager
 journalctl -u arbbot.service -n 200 --no-pager
 ```
 
+Jika muncul warning permission terkait /home/arbbot/.config/git saat startup, itu biasanya karena ProtectHome aktif.
+Perbaikan ada pada file service terbaru yang mengatur HOME dan XDG_CONFIG_HOME ke /opt/arbbot/app.
+Setelah update file deploy/arbbot.service, jalankan ulang.
+
+```bash
+cd /opt/arbbot/app
+sudo bash deploy/install_service.sh
+sudo systemctl restart arbbot.service
+journalctl -u arbbot.service -n 50 --no-pager
+```
+
 ## 6. Expose Dashboard Safely
 
 Lebih aman memakai tunnel daripada public access.

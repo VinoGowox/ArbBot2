@@ -9,6 +9,8 @@ User=arbbot
 Group=arbbot
 WorkingDirectory=/opt/arbbot/app
 Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/opt/arbbot/app
+Environment=XDG_CONFIG_HOME=/opt/arbbot/app/.config
 ExecStart=/opt/arbbot/app/.venv/bin/python -m src.main
 Restart=always
 RestartSec=5
