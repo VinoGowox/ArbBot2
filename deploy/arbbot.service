@@ -1,0 +1,25 @@
+[Unit]
+Description=ArbBot Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arbbot
+Group=arbbot
+WorkingDirectory=/opt/arbbot/app
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/arbbot/app/.venv/bin/python -m src.main
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/arbbot/app
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

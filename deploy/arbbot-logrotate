@@ -1,0 +1,12 @@
+/var/log/arbbot/*.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    create 0640 arbbot arbbot
+    sharedscripts
+    postrotate
+        systemctl kill -s SIGUSR1 arbbot.service >/dev/null 2>&1 || true
+    endscript
+}
