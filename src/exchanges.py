@@ -45,6 +45,61 @@ class ExchangeGateway:
 
         return clients
 
+    def resolve_taker_fees(
+        self,
+        symbols: List[str],
+        fallback: Dict[str, float],
+    ) -> Dict[str, float]:
+        resolved: Dict[str, float] = {}
+        for exchange_name, client in self.clients.items():
+            fallback_fee = float(fallback.get(exchange_name, 0.001))
+            best_fee = fallback_fee
+
+            markets = None
+            try:
+                markets = client.load_markets()
+            except Exception as exc:
+                logger.debug("load_markets failed | %s | %s", exchange_name, exc)
+
+            market_fees: List[float] = []
+            if markets:
+                for symbol in symbols:
+                    market = markets.get(symbol)
+                    if not market:
+                        continue
+                    taker = float(market.get("taker") or 0.0)
+                    if taker > 0:
+                        market_fees.append(taker)
+
+            api_fees: List[float] = []
+            try:
+                has_fetch = bool(getattr(client, "has", {}).get("fetchTradingFees"))
+                if has_fetch:
+                    fee_data = client.fetch_trading_fees()
+                    if isinstance(fee_data, dict):
+                        for symbol in symbols:
+                            row = fee_data.get(symbol)
+                            if not isinstance(row, dict):
+                                continue
+                            taker = float(row.get("taker") or 0.0)
+                            if taker > 0:
+                                api_fees.append(taker)
+            except Exception as exc:
+                logger.debug("fetch_trading_fees failed | %s | %s", exchange_name, exc)
+
+            if api_fees:
+                best_fee = sum(api_fees) / len(api_fees)
+            elif market_fees:
+                best_fee = sum(market_fees) / len(market_fees)
+
+            resolved[exchange_name] = best_fee
+
+        for exchange_name in fallback:
+            if exchange_name not in resolved:
+                resolved[exchange_name] = float(fallback[exchange_name])
+
+        return resolved
+
     def fetch_all_tickers(self, symbols: List[str]) -> Dict[str, Dict[str, TickerSnapshot]]:
         results: Dict[str, Dict[str, TickerSnapshot]] = {ex: {} for ex in self.clients}
 

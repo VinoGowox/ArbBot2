@@ -15,6 +15,7 @@ class BotConfig:
     poll_interval_sec: float
     min_net_spread_pct: float
     slippage_pct: float
+    use_dynamic_slippage: bool
     max_data_age_ms: int
     max_daily_drawdown_pct: float
     capital_per_exchange_usdt: float
@@ -71,11 +72,18 @@ def load_config() -> BotConfig:
     load_dotenv()
 
     exchanges = [x.lower() for x in _csv_env("EXCHANGES", "binance,bybit,okx,kucoin")]
-    fees_taker = {
+    default_fees_taker = {
         "binance": 0.001,
         "bybit": 0.001,
         "okx": 0.001,
         "kucoin": 0.001,
+    }
+    fees_taker = {
+        ex: _float_env(
+            f"FEE_TAKER_{ex.upper()}",
+            default_fees_taker.get(ex, 0.001),
+        )
+        for ex in exchanges
     }
 
     return BotConfig(
@@ -85,6 +93,7 @@ def load_config() -> BotConfig:
         poll_interval_sec=_float_env("POLL_INTERVAL_SEC", 2.0),
         min_net_spread_pct=_float_env("MIN_NET_SPREAD_PCT", 0.15),
         slippage_pct=_float_env("SLIPPAGE_PCT", 0.05),
+        use_dynamic_slippage=_bool_env("USE_DYNAMIC_SLIPPAGE", True),
         max_data_age_ms=_int_env("MAX_DATA_AGE_MS", 3500),
         max_daily_drawdown_pct=_float_env("MAX_DAILY_DRAWDOWN_PCT", 1.0),
         capital_per_exchange_usdt=_float_env("CAPITAL_PER_EXCHANGE_USDT", 1000.0),

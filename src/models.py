@@ -28,6 +28,10 @@ class Opportunity:
     sell_price: float
     buy_price_source: str
     sell_price_source: str
+    buy_fee_pct: float
+    sell_fee_pct: float
+    buy_slippage_pct: float
+    sell_slippage_pct: float
     gross_spread_pct: float
     net_spread_pct: float
     quantity: float

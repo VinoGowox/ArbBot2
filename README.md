@@ -11,7 +11,7 @@ Fitur utama.
 
 - Scanner multi-exchange untuk BTC/USDT dan ETH/USDT.
 - Filter kualitas sinyal berbasis orderbook depth (impact price).
-- Kalkulasi net spread setelah fee dan slippage buffer.
+- Kalkulasi net spread dengan taker fee per exchange (resolved dari metadata exchange dengan fallback env) dan slippage dinamis dari depth orderbook.
 - Risk controls: daily drawdown limit, min notional, max position, staleness guard.
 - Circuit breaker berdasarkan consecutive failures.
 - Cooldown per route arbitrage untuk menghindari overtrading.
@@ -72,6 +72,8 @@ Artefak deploy.
 
 - MIN_NET_SPREAD_PCT: filter minimum net spread.
 - SLIPPAGE_PCT: buffer slippage konservatif.
+- USE_DYNAMIC_SLIPPAGE: aktifkan slippage dinamis dari impact orderbook per peluang.
+- FEE_TAKER_BINANCE, FEE_TAKER_BYBIT, FEE_TAKER_OKX, FEE_TAKER_KUCOIN: override fee taker per exchange bila ingin memakai angka akun Anda.
 - ENABLE_ORDERBOOK_DEPTH: aktifkan perhitungan harga impact dari orderbook.
 - REQUIRE_DEPTH_LIQUIDITY: hanya terima sinyal yang punya depth valid.
 - ORDERBOOK_IMPACT_NOTIONAL_USDT: ukuran notional simulasi untuk cek kedalaman.

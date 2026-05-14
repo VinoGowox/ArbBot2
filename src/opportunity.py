@@ -91,11 +91,27 @@ class OpportunityEngine:
 
         buy_fee = self.config.fees_taker.get(buy_row.exchange, 0.001)
         sell_fee = self.config.fees_taker.get(sell_row.exchange, 0.001)
-        slippage = self.config.slippage_pct / 100.0
+
+        dynamic_buy_slippage_pct = 0.0
+        dynamic_sell_slippage_pct = 0.0
+        if buy_row.ask > 0:
+            dynamic_buy_slippage_pct = max(0.0, ((buy_price - buy_row.ask) / buy_row.ask) * 100.0)
+        if sell_row.bid > 0:
+            dynamic_sell_slippage_pct = max(0.0, ((sell_row.bid - sell_price) / sell_row.bid) * 100.0)
+
+        if self.config.use_dynamic_slippage:
+            buy_slippage_pct = max(self.config.slippage_pct, dynamic_buy_slippage_pct)
+            sell_slippage_pct = max(self.config.slippage_pct, dynamic_sell_slippage_pct)
+        else:
+            buy_slippage_pct = self.config.slippage_pct
+            sell_slippage_pct = self.config.slippage_pct
+
+        buy_slippage = buy_slippage_pct / 100.0
+        sell_slippage = sell_slippage_pct / 100.0
 
         gross_spread_pct = ((sell_price - buy_price) / buy_price) * 100.0
-        net_buy = buy_price * (1.0 + buy_fee + slippage)
-        net_sell = sell_price * (1.0 - sell_fee - slippage)
+        net_buy = buy_price * (1.0 + buy_fee + buy_slippage)
+        net_sell = sell_price * (1.0 - sell_fee - sell_slippage)
         net_spread_pct = ((net_sell - net_buy) / net_buy) * 100.0
 
         if net_spread_pct < self.config.min_net_spread_pct:
@@ -127,6 +143,10 @@ class OpportunityEngine:
             sell_price=sell_price,
             buy_price_source=buy_source,
             sell_price_source=sell_source,
+            buy_fee_pct=buy_fee * 100.0,
+            sell_fee_pct=sell_fee * 100.0,
+            buy_slippage_pct=buy_slippage_pct,
+            sell_slippage_pct=sell_slippage_pct,
             gross_spread_pct=gross_spread_pct,
             net_spread_pct=net_spread_pct,
             quantity=quantity,

@@ -35,6 +35,7 @@ def run() -> None:
     signal.signal(signal.SIGTERM, _request_stop)
 
     gateway = ExchangeGateway(cfg)
+    cfg.fees_taker = gateway.resolve_taker_fees(cfg.symbols, cfg.fees_taker)
     engine = OpportunityEngine(cfg)
     executor = PaperExecutor(cfg)
     notifier = TelegramNotifier(cfg)
@@ -57,10 +58,12 @@ def run() -> None:
             dashboard = None
 
     logger.info(
-        "Bot started | exchanges=%s | symbols=%s | min_net_spread=%.4f%%",
+        "Bot started | exchanges=%s | symbols=%s | min_net_spread=%.4f%% | dynamic_slippage=%s | fees_taker=%s",
         cfg.exchanges,
         cfg.symbols,
         cfg.min_net_spread_pct,
+        cfg.use_dynamic_slippage,
+        {k: round(v * 100.0, 4) for k, v in cfg.fees_taker.items()},
     )
     if notifier.enabled:
         notifier.send(
