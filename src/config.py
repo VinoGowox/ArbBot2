@@ -112,7 +112,7 @@ def load_config() -> BotConfig:
         max_opportunity_age_ms=_int_env("MAX_OPPORTUNITY_AGE_MS", 1200),
         enable_orderbook_depth=_bool_env("ENABLE_ORDERBOOK_DEPTH", True),
         enable_websocket_market_data=_bool_env("ENABLE_WEBSOCKET_MARKET_DATA", True),
-        websocket_stale_ms=_int_env("WEBSOCKET_STALE_MS", 2500),
+        websocket_stale_ms=_int_env("WEBSOCKET_STALE_MS", 6000),
         require_depth_liquidity=_bool_env("REQUIRE_DEPTH_LIQUIDITY", True),
         orderbook_depth_levels=_int_env("ORDERBOOK_DEPTH_LEVELS", 5),
         orderbook_impact_notional_usdt=_float_env("ORDERBOOK_IMPACT_NOTIONAL_USDT", 150.0),

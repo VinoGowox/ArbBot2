@@ -119,7 +119,7 @@ class BybitTickerStream:
         topics = []
         for symbol in self.symbols:
             symbol_raw = symbol.replace("/", "").upper()
-            topics.append(f"tickers.{symbol_raw}")
+            topics.append(f"orderbook.1.{symbol_raw}")
 
         if not topics:
             return
@@ -139,29 +139,33 @@ class BybitTickerStream:
 
                         topic = str(payload.get("topic") or "")
                         data = payload.get("data")
-                        if not topic.startswith("tickers.") or data is None:
+                        if not topic.startswith("orderbook.") or data is None:
                             continue
 
-                        if isinstance(data, list):
-                            if not data:
-                                continue
-                            row = data[0]
-                        elif isinstance(data, dict):
-                            row = data
-                        else:
+                        if not isinstance(data, dict):
                             continue
 
-                        symbol_raw = str(row.get("symbol") or topic.replace("tickers.", "")).upper()
+                        symbol_raw = str(data.get("s") or topic.split(".")[-1]).upper()
                         if not symbol_raw:
                             continue
 
                         symbol = _to_slash_symbol(symbol_raw)
-                        bid = float(row.get("bid1Price") or row.get("bidPrice") or 0.0)
-                        ask = float(row.get("ask1Price") or row.get("askPrice") or 0.0)
+                        bids = data.get("b") or []
+                        asks = data.get("a") or []
+                        if not bids or not asks:
+                            continue
+
+                        top_bid = bids[0] if isinstance(bids[0], list) else []
+                        top_ask = asks[0] if isinstance(asks[0], list) else []
+                        if len(top_bid) < 1 or len(top_ask) < 1:
+                            continue
+
+                        bid = float(top_bid[0] or 0.0)
+                        ask = float(top_ask[0] or 0.0)
                         if bid <= 0 or ask <= 0:
                             continue
 
-                        ts = int(payload.get("ts") or int(time.time() * 1000))
+                        ts = int(data.get("ts") or payload.get("ts") or int(time.time() * 1000))
                         with self._lock:
                             self._data[symbol] = {
                                 "bid": bid,
