@@ -246,7 +246,13 @@ class OpportunityEngine:
 
         expected_profit_usdt = quantity * (net_sell - net_buy)
         if expected_profit_usdt <= 0:
-            return None, "non_positive_expected_profit", net_spread_pct
+            if (
+                self.config.mode == "dry-run"
+                and self.config.allow_negative_expected_profit_dryrun
+            ):
+                pass
+            else:
+                return None, "non_positive_expected_profit", net_spread_pct
 
         return Opportunity(
             symbol=buy_row.symbol,

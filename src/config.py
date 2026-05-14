@@ -28,6 +28,7 @@ class BotConfig:
     maker_requote_step_bps: float
     maker_min_fill_probability: float
     maker_requote_fill_boost: float
+    allow_negative_expected_profit_dryrun: bool
     max_data_age_ms: int
     max_daily_drawdown_pct: float
     capital_per_exchange_usdt: float
@@ -128,6 +129,10 @@ def load_config() -> BotConfig:
         maker_requote_step_bps=_float_env("MAKER_REQUOTE_STEP_BPS", 0.8),
         maker_min_fill_probability=_float_env("MAKER_MIN_FILL_PROBABILITY", 0.45),
         maker_requote_fill_boost=_float_env("MAKER_REQUOTE_FILL_BOOST", 0.12),
+        allow_negative_expected_profit_dryrun=_bool_env(
+            "ALLOW_NEGATIVE_EXPECTED_PROFIT_DRYRUN",
+            False,
+        ),
         max_data_age_ms=_int_env("MAX_DATA_AGE_MS", 3500),
         max_daily_drawdown_pct=_float_env("MAX_DAILY_DRAWDOWN_PCT", 1.0),
         capital_per_exchange_usdt=_float_env("CAPITAL_PER_EXCHANGE_USDT", 1000.0),

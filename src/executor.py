@@ -175,15 +175,18 @@ class PaperExecutor:
         requote_penalty = buy_cost * (self.config.maker_requote_step_bps / 10000.0) * requotes
         pnl = quote_received - quote_spent - requote_penalty
         if pnl <= 0:
-            return self._register_failure(
-                success=False,
-                reason="requote_eroded_edge",
-                symbol=opp.symbol,
-                buy_exchange=opp.buy_exchange,
-                sell_exchange=opp.sell_exchange,
-                quantity=opp.quantity,
-                realized_pnl_usdt=0.0,
-            )
+            if not (
+                self.mode == "dry-run" and self.config.allow_negative_expected_profit_dryrun
+            ):
+                return self._register_failure(
+                    success=False,
+                    reason="requote_eroded_edge",
+                    symbol=opp.symbol,
+                    buy_exchange=opp.buy_exchange,
+                    sell_exchange=opp.sell_exchange,
+                    quantity=opp.quantity,
+                    realized_pnl_usdt=0.0,
+                )
 
         return self._finalize_execution(
             opp=opp,
