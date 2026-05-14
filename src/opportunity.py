@@ -13,6 +13,7 @@ class OpportunityEngine:
         self.config = config
         self.rejection_counts_last_cycle: Dict[str, int] = {}
         self.rejection_counts_total: Dict[str, int] = {}
+        self.net_spread_distribution_last_cycle: Dict[str, float] = {}
 
     def find_opportunities(
         self,
@@ -21,6 +22,7 @@ class OpportunityEngine:
         opportunities: List[Opportunity] = []
         now_ms = int(time.time() * 1000)
         cycle_rejections: Dict[str, int] = defaultdict(int)
+        net_spread_samples: List[float] = []
 
         for symbol in self.config.symbols:
             rows = []
@@ -42,7 +44,9 @@ class OpportunityEngine:
                 for sell_row in rows:
                     if buy_row.exchange == sell_row.exchange:
                         continue
-                    opp, reject_reason = self._build_opportunity(buy_row, sell_row)
+                    opp, reject_reason, net_spread_pct = self._build_opportunity(buy_row, sell_row)
+                    if net_spread_pct is not None:
+                        net_spread_samples.append(net_spread_pct)
                     if opp is not None:
                         opportunities.append(opp)
                     elif reject_reason is not None:
@@ -52,6 +56,7 @@ class OpportunityEngine:
         self.rejection_counts_last_cycle = dict(cycle_rejections)
         for reason, count in cycle_rejections.items():
             self.rejection_counts_total[reason] = self.rejection_counts_total.get(reason, 0) + count
+        self.net_spread_distribution_last_cycle = _distribution(net_spread_samples)
         return opportunities
 
     def get_rejection_counts(self) -> Dict[str, Dict[str, int]]:
@@ -60,11 +65,14 @@ class OpportunityEngine:
             "total": dict(self.rejection_counts_total),
         }
 
+    def get_net_spread_distribution(self) -> Dict[str, float]:
+        return dict(self.net_spread_distribution_last_cycle)
+
     def _build_opportunity(
         self,
         buy_row: TickerSnapshot,
         sell_row: TickerSnapshot,
-    ) -> tuple[Opportunity | None, str | None]:
+    ) -> tuple[Opportunity | None, str | None, float | None]:
         buy_price = buy_row.ask
         sell_price = sell_row.bid
         buy_source = "ticker"
@@ -79,7 +87,7 @@ class OpportunityEngine:
 
         if self.config.require_depth_liquidity:
             if buy_row.ask_depth_price <= 0 or sell_row.bid_depth_price <= 0:
-                return None, "depth_liquidity_missing"
+                return None, "depth_liquidity_missing", None
 
         buy_fee = self.config.fees_taker.get(buy_row.exchange, 0.001)
         sell_fee = self.config.fees_taker.get(sell_row.exchange, 0.001)
@@ -91,7 +99,7 @@ class OpportunityEngine:
         net_spread_pct = ((net_sell - net_buy) / net_buy) * 100.0
 
         if net_spread_pct < self.config.min_net_spread_pct:
-            return None, "net_spread_below_threshold"
+            return None, "net_spread_below_threshold", net_spread_pct
 
         qty_from_cap = self.config.capital_per_trade_usdt / buy_price
         quantity = min_nonzero(
@@ -105,11 +113,11 @@ class OpportunityEngine:
 
         notional = quantity * buy_price
         if quantity <= 0 or notional < self.config.min_notional_usdt:
-            return None, "insufficient_trade_size"
+            return None, "insufficient_trade_size", net_spread_pct
 
         expected_profit_usdt = quantity * (net_sell - net_buy)
         if expected_profit_usdt <= 0:
-            return None, "non_positive_expected_profit"
+            return None, "non_positive_expected_profit", net_spread_pct
 
         return Opportunity(
             symbol=buy_row.symbol,
@@ -124,7 +132,7 @@ class OpportunityEngine:
             quantity=quantity,
             expected_profit_usdt=expected_profit_usdt,
             timestamp_ms=int(time.time() * 1000),
-        ), None
+        ), None, net_spread_pct
 
 
 def min_nonzero(*values: float) -> float:
@@ -132,3 +140,33 @@ def min_nonzero(*values: float) -> float:
     if not candidates:
         return 0.0
     return min(candidates)
+
+
+def _distribution(samples: List[float]) -> Dict[str, float]:
+    if not samples:
+        return {"count": 0.0, "p50": 0.0, "p90": 0.0, "max": 0.0, "min": 0.0}
+
+    sorted_samples = sorted(samples)
+    return {
+        "count": float(len(sorted_samples)),
+        "p50": _percentile(sorted_samples, 50.0),
+        "p90": _percentile(sorted_samples, 90.0),
+        "max": sorted_samples[-1],
+        "min": sorted_samples[0],
+    }
+
+
+def _percentile(sorted_samples: List[float], pct: float) -> float:
+    if not sorted_samples:
+        return 0.0
+
+    if pct <= 0:
+        return sorted_samples[0]
+    if pct >= 100:
+        return sorted_samples[-1]
+
+    position = (len(sorted_samples) - 1) * (pct / 100.0)
+    lower = int(position)
+    upper = min(lower + 1, len(sorted_samples) - 1)
+    weight = position - lower
+    return sorted_samples[lower] * (1.0 - weight) + sorted_samples[upper] * weight

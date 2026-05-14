@@ -74,6 +74,7 @@ def run() -> None:
             market = gateway.fetch_all_tickers(cfg.symbols)
             opportunities = engine.find_opportunities(market)
             rejection_stats = engine.get_rejection_counts()
+            spread_dist = engine.get_net_spread_distribution()
             runtime.update(
                 {
                     "cycle": cycles,
@@ -81,6 +82,7 @@ def run() -> None:
                     "last_event": "scan_completed",
                     "rejections_last_cycle": rejection_stats["last_cycle"],
                     "rejections_total": rejection_stats["total"],
+                    "net_spread_distribution": spread_dist,
                 }
             )
 
@@ -148,7 +150,7 @@ def run() -> None:
                     }
                 )
                 logger.info(
-                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s",
+                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s",
                     metrics["realized_pnl_usdt"],
                     metrics["trades_executed"],
                     metrics["trades_failed"],
@@ -156,6 +158,7 @@ def run() -> None:
                     metrics["blocked"],
                     metrics["blocked_reason"],
                     rejection_stats["last_cycle"],
+                    spread_dist,
                 )
                 last_status_ts = now_ts
 
