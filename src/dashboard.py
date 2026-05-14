@@ -31,6 +31,7 @@ class RuntimeState:
           "rejections_last_cycle": {},
           "rejections_total": {},
           "net_spread_distribution": {},
+          "fee_sources": {},
             "metrics": {},
             "balances": {},
         }
@@ -187,6 +188,10 @@ def _dashboard_html() -> str:
         <div class=\"label\">Net Spread Dist (Cycle)</div>
         <pre id=\"spread-dist\">-</pre>
       </div>
+      <div class=\"card\">
+        <div class=\"label\">Fee Sources</div>
+        <pre id=\"fee-sources\">-</pre>
+      </div>
     </div>
   </div>
   <script>
@@ -211,6 +216,7 @@ def _dashboard_html() -> str:
         document.getElementById('reject-last').textContent = JSON.stringify(data.rejections_last_cycle || {}, null, 2);
         document.getElementById('reject-total').textContent = JSON.stringify(data.rejections_total || {}, null, 2);
         document.getElementById('spread-dist').textContent = JSON.stringify(data.net_spread_distribution || {}, null, 2);
+        document.getElementById('fee-sources').textContent = JSON.stringify(data.fee_sources || {}, null, 2);
       } catch (err) {
         document.getElementById('event').textContent = 'dashboard fetch error';
       }

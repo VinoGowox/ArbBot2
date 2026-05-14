@@ -49,11 +49,13 @@ class ExchangeGateway:
         self,
         symbols: List[str],
         fallback: Dict[str, float],
-    ) -> Dict[str, float]:
+    ) -> tuple[Dict[str, float], Dict[str, str]]:
         resolved: Dict[str, float] = {}
+        sources: Dict[str, str] = {}
         for exchange_name, client in self.clients.items():
             fallback_fee = float(fallback.get(exchange_name, 0.001))
             best_fee = fallback_fee
+            source = "env_fallback"
 
             markets = None
             try:
@@ -89,16 +91,20 @@ class ExchangeGateway:
 
             if api_fees:
                 best_fee = sum(api_fees) / len(api_fees)
+                source = "api_trading_fees"
             elif market_fees:
                 best_fee = sum(market_fees) / len(market_fees)
+                source = "markets_taker"
 
             resolved[exchange_name] = best_fee
+            sources[exchange_name] = source
 
         for exchange_name in fallback:
             if exchange_name not in resolved:
                 resolved[exchange_name] = float(fallback[exchange_name])
+                sources[exchange_name] = "env_fallback"
 
-        return resolved
+        return resolved, sources
 
     def fetch_all_tickers(self, symbols: List[str]) -> Dict[str, Dict[str, TickerSnapshot]]:
         results: Dict[str, Dict[str, TickerSnapshot]] = {ex: {} for ex in self.clients}

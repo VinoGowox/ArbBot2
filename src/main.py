@@ -35,11 +35,13 @@ def run() -> None:
     signal.signal(signal.SIGTERM, _request_stop)
 
     gateway = ExchangeGateway(cfg)
-    cfg.fees_taker = gateway.resolve_taker_fees(cfg.symbols, cfg.fees_taker)
+    resolved_fees, fee_sources = gateway.resolve_taker_fees(cfg.symbols, cfg.fees_taker)
+    cfg.fees_taker = resolved_fees
     engine = OpportunityEngine(cfg)
     executor = PaperExecutor(cfg)
     notifier = TelegramNotifier(cfg)
     runtime = RuntimeState(cfg.mode, cfg.exchanges, cfg.symbols)
+    runtime.update({"fee_sources": fee_sources})
     dashboard = None
     last_status_ts = 0.0
     blocked_alert_sent = False
@@ -65,6 +67,7 @@ def run() -> None:
         cfg.use_dynamic_slippage,
         {k: round(v * 100.0, 4) for k, v in cfg.fees_taker.items()},
     )
+    logger.info("Fee sources | %s", fee_sources)
     if notifier.enabled:
         notifier.send(
             f"ArbBot started in {cfg.mode} mode | symbols={','.join(cfg.symbols)}"
