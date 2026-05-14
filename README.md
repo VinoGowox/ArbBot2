@@ -10,7 +10,7 @@ Bot ini dirancang untuk menangkap peluang cross-exchange spot arbitrage antara 4
 Fitur utama.
 
 - Scanner multi-exchange untuk BTC/USDT dan ETH/USDT.
-- Hybrid market data: Binance WebSocket (bookTicker) dengan REST fallback otomatis.
+- Hybrid market data: Binance dan Bybit WebSocket ticker dengan REST fallback otomatis.
 - Filter kualitas sinyal berbasis orderbook depth (impact price).
 - Kalkulasi net spread dengan taker fee per exchange (resolved dari metadata exchange dengan fallback env) dan slippage dinamis dari depth orderbook.
 - Risk controls: daily drawdown limit, min notional, max position, staleness guard.
@@ -95,6 +95,7 @@ Endpoint JSON.
 - /metrics.json
 
 Dashboard juga menampilkan sumber data market per cycle (`ws` vs `rest`) agar transparan apakah stream aktif atau fallback.
+Dashboard juga menampilkan sumber data market terpisah per exchange.
 
 Kategori alasan penolakan yang tampil di dashboard/log antara lain.
 

@@ -8,7 +8,7 @@ from typing import Dict, List
 import ccxt
 
 from .config import BotConfig
-from .market_ws import BinanceBookTickerStream
+from .market_ws import BinanceBookTickerStream, BybitTickerStream
 from .models import TickerSnapshot
 
 logger = logging.getLogger(__name__)
@@ -19,9 +19,13 @@ class ExchangeGateway:
         self.config = config
         self.clients = self._init_clients(config.exchanges)
         self.binance_ws: BinanceBookTickerStream | None = None
+        self.bybit_ws: BybitTickerStream | None = None
         if config.enable_websocket_market_data and "binance" in self.clients:
             self.binance_ws = BinanceBookTickerStream(config.symbols)
             self.binance_ws.start()
+        if config.enable_websocket_market_data and "bybit" in self.clients:
+            self.bybit_ws = BybitTickerStream(config.symbols)
+            self.bybit_ws.start()
 
     def _init_clients(self, exchanges: List[str]) -> Dict[str, ccxt.Exchange]:
         clients: Dict[str, ccxt.Exchange] = {}
@@ -143,17 +147,21 @@ class ExchangeGateway:
             market_data_source = "rest"
 
             ws_used = False
+            ws_row = None
             if exchange_name == "binance" and self.binance_ws is not None:
                 ws_row = self.binance_ws.get(symbol)
-                if ws_row is not None:
-                    ws_ts = int(ws_row.get("timestamp_ms") or 0)
-                    if (int(time.time() * 1000) - ws_ts) <= self.config.websocket_stale_ms:
-                        bid = float(ws_row.get("bid") or 0.0)
-                        ask = float(ws_row.get("ask") or 0.0)
-                        timestamp_ms = ws_ts
-                        ws_used = bid > 0 and ask > 0
-                        if ws_used:
-                            market_data_source = "ws"
+            elif exchange_name == "bybit" and self.bybit_ws is not None:
+                ws_row = self.bybit_ws.get(symbol)
+
+            if ws_row is not None:
+                ws_ts = int(ws_row.get("timestamp_ms") or 0)
+                if (int(time.time() * 1000) - ws_ts) <= self.config.websocket_stale_ms:
+                    bid = float(ws_row.get("bid") or 0.0)
+                    ask = float(ws_row.get("ask") or 0.0)
+                    timestamp_ms = ws_ts
+                    ws_used = bid > 0 and ask > 0
+                    if ws_used:
+                        market_data_source = "ws"
 
             if not ws_used:
                 ticker = client.fetch_ticker(symbol)
@@ -214,6 +222,8 @@ class ExchangeGateway:
     def close(self) -> None:
         if self.binance_ws is not None:
             self.binance_ws.stop()
+        if self.bybit_ws is not None:
+            self.bybit_ws.stop()
         for client in self.clients.values():
             try:
                 client.close()

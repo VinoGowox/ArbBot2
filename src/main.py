@@ -79,12 +79,21 @@ def run() -> None:
             cycles += 1
             market = gateway.fetch_all_tickers(cfg.symbols)
             source_counts = {"ws": 0, "rest": 0}
+            source_counts_by_exchange: dict[str, dict[str, int]] = {
+                ex: {"ws": 0, "rest": 0} for ex in cfg.exchanges
+            }
             for by_symbol in market.values():
                 for snap in by_symbol.values():
                     if snap.market_data_source == "ws":
                         source_counts["ws"] += 1
+                        source_counts_by_exchange.setdefault(snap.exchange, {"ws": 0, "rest": 0})[
+                            "ws"
+                        ] += 1
                     else:
                         source_counts["rest"] += 1
+                        source_counts_by_exchange.setdefault(snap.exchange, {"ws": 0, "rest": 0})[
+                            "rest"
+                        ] += 1
 
             opportunities = engine.find_opportunities(market)
             rejection_stats = engine.get_rejection_counts()
@@ -98,6 +107,7 @@ def run() -> None:
                     "rejections_total": rejection_stats["total"],
                     "net_spread_distribution": spread_dist,
                     "market_data_source_counts": source_counts,
+                    "market_data_source_by_exchange": source_counts_by_exchange,
                 }
             )
 
@@ -165,7 +175,7 @@ def run() -> None:
                     }
                 )
                 logger.info(
-                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s | market_src=%s",
+                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s | market_src=%s | market_src_ex=%s",
                     metrics["realized_pnl_usdt"],
                     metrics["trades_executed"],
                     metrics["trades_failed"],
@@ -175,6 +185,7 @@ def run() -> None:
                     rejection_stats["last_cycle"],
                     spread_dist,
                     source_counts,
+                    source_counts_by_exchange,
                 )
                 last_status_ts = now_ts
 
