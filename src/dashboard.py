@@ -27,13 +27,14 @@ class RuntimeState:
             "last_event": "init",
             "opportunity_count": 0,
             "best_opportunity": None,
-          "last_order_payload": {},
-          "rejections_last_cycle": {},
-          "rejections_total": {},
-          "net_spread_distribution": {},
-          "fee_sources": {},
-          "market_data_source_counts": {},
-          "market_data_source_by_exchange": {},
+            "last_order_payload": {},
+            "rejections_last_cycle": {},
+            "rejections_total": {},
+            "net_spread_distribution": {},
+            "execution_diagnostics": {},
+            "fee_sources": {},
+            "market_data_source_counts": {},
+            "market_data_source_by_exchange": {},
             "metrics": {},
             "balances": {},
         }
@@ -166,6 +167,10 @@ def _dashboard_html() -> str:
         <div class=\"label\">Last Event</div>
         <div id=\"event\" class=\"value\" style=\"font-size:16px\">-</div>
       </div>
+      <div class="card">
+        <div class="label">Execution Diagnostics</div>
+        <pre id="exec-diag">-</pre>
+      </div>
       <div class=\"card\">
         <div class=\"label\">Best Opportunity</div>
         <pre id=\"best\">-</pre>
@@ -226,6 +231,7 @@ def _dashboard_html() -> str:
         document.getElementById('reject-last').textContent = JSON.stringify(data.rejections_last_cycle || {}, null, 2);
         document.getElementById('reject-total').textContent = JSON.stringify(data.rejections_total || {}, null, 2);
         document.getElementById('spread-dist').textContent = JSON.stringify(data.net_spread_distribution || {}, null, 2);
+        document.getElementById('exec-diag').textContent = JSON.stringify(data.execution_diagnostics || {}, null, 2);
         document.getElementById('fee-sources').textContent = JSON.stringify(data.fee_sources || {}, null, 2);
         document.getElementById('market-source').textContent = JSON.stringify(data.market_data_source_counts || {}, null, 2);
         document.getElementById('market-source-ex').textContent = JSON.stringify(data.market_data_source_by_exchange || {}, null, 2);

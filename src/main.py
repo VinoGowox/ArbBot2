@@ -30,6 +30,12 @@ def run() -> None:
     if cfg.mode not in {"paper", "dry-run"}:
         logger.warning("Unsupported MODE=%s. Falling back to MODE=paper.", cfg.mode)
         cfg.mode = "paper"
+    if cfg.execution_style not in {"taker-taker", "maker-taker"}:
+        logger.warning(
+            "Unsupported EXECUTION_STYLE=%s. Falling back to taker-taker.",
+            cfg.execution_style,
+        )
+        cfg.execution_style = "taker-taker"
 
     signal.signal(signal.SIGINT, _request_stop)
     signal.signal(signal.SIGTERM, _request_stop)
@@ -60,11 +66,13 @@ def run() -> None:
             dashboard = None
 
     logger.info(
-        "Bot started | exchanges=%s | symbols=%s | min_net_spread=%.4f%% | dynamic_slippage=%s | fees_taker=%s",
+        "Bot started | exchanges=%s | symbols=%s | mode=%s | min_net_spread=%.4f%% | dynamic_slippage=%s | auto_threshold=%s | fees_taker=%s",
         cfg.exchanges,
         cfg.symbols,
+        cfg.execution_style,
         cfg.min_net_spread_pct,
         cfg.use_dynamic_slippage,
+        cfg.auto_threshold_enabled,
         {k: round(v * 100.0, 4) for k, v in cfg.fees_taker.items()},
     )
     logger.info("Fee sources | %s", fee_sources)
@@ -98,6 +106,7 @@ def run() -> None:
             opportunities = engine.find_opportunities(market)
             rejection_stats = engine.get_rejection_counts()
             spread_dist = engine.get_net_spread_distribution()
+            execution_diag = engine.get_execution_diagnostics()
             runtime.update(
                 {
                     "cycle": cycles,
@@ -106,6 +115,7 @@ def run() -> None:
                     "rejections_last_cycle": rejection_stats["last_cycle"],
                     "rejections_total": rejection_stats["total"],
                     "net_spread_distribution": spread_dist,
+                    "execution_diagnostics": execution_diag,
                     "market_data_source_counts": source_counts,
                     "market_data_source_by_exchange": source_counts_by_exchange,
                 }
@@ -131,11 +141,14 @@ def run() -> None:
                             }
                         )
                         logger.info(
-                            "Cycle %d | executed | mode=%s | expected=%.4f USDT | net_spread=%.4f%% | source=%s/%s",
+                            "Cycle %d | executed | mode=%s | expected=%.4f USDT | net_spread=%.4f%% | threshold=%.4f%% | fill_prob=%.2f | queue_risk=%.2f | source=%s/%s",
                             cycles,
                             cfg.mode,
                             opp.expected_profit_usdt,
                             opp.net_spread_pct,
+                            opp.dynamic_threshold_pct,
+                            opp.fill_probability,
+                            opp.queue_risk_score,
                             opp.buy_price_source,
                             opp.sell_price_source,
                         )
@@ -175,7 +188,7 @@ def run() -> None:
                     }
                 )
                 logger.info(
-                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s | market_src=%s | market_src_ex=%s",
+                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s | exec_diag=%s | market_src=%s | market_src_ex=%s",
                     metrics["realized_pnl_usdt"],
                     metrics["trades_executed"],
                     metrics["trades_failed"],
@@ -184,6 +197,7 @@ def run() -> None:
                     metrics["blocked_reason"],
                     rejection_stats["last_cycle"],
                     spread_dist,
+                    execution_diag,
                     source_counts,
                     source_counts_by_exchange,
                 )

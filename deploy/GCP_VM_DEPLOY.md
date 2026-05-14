@@ -1,105 +1,128 @@
-# ArbBot Deploy Guide for Google Cloud VM
+# ArbBot Deploy Guide for Google Cloud VM (Complete)
 
-## 1. Recommended VM Spec
+Panduan ini untuk Ubuntu 22.04 fresh VM, sesuai kebutuhan Anda.
 
-- OS: Ubuntu 22.04 LTS.
-- Machine: e2-small atau lebih tinggi.
-- Disk: 20 GB persistent disk.
-- Network tags: allow ssh, optional dashboard access hanya dari trusted IP.
+## A. Prinsip Eksekusi Command
 
-## 2. Initial Server Hardening
+- Gunakan user biasa untuk login SSH harian.
+- Gunakan sudo hanya saat butuh hak admin (install package, systemd, firewall, file di /opt).
+- Bot dijalankan oleh service user non-login bernama arbbot.
+- Jangan jalankan bot sebagai root.
 
-Run pada VM.
+## B. Prasyarat
 
-```bash
-sudo apt-get update
-sudo apt-get install -y unattended-upgrades
-sudo dpkg-reconfigure --priority=low unattended-upgrades
-```
+- VM aktif, bisa SSH.
+- Source code sudah ada di GitHub: [VinoGowox/ArbBot2](https://github.com/VinoGowox/ArbBot2)
+- Python 3.10+ tersedia (akan di-install di langkah berikut).
 
-Optional firewall.
+## C. Step 1 - Login ke VM
 
 ```bash
-sudo apt-get install -y ufw
-sudo ufw allow OpenSSH
-sudo ufw allow 8080/tcp
-sudo ufw enable
+gcloud compute ssh arb2 --zone asia-southeast2-a
 ```
 
-Jika Anda memang ingin dashboard terbuka untuk semua IP, gunakan rule di atas.
-Tetap disarankan memakai mode dry-run atau paper saat dashboard public.
-
-## 3. Copy Project to VM
-
-Opsi A, tanpa gcloud di local: clone langsung dari VM (direkomendasikan).
-
-```bash
-sudo mkdir -p /opt/arbbot
-sudo git clone <PRIVATE_REPO_URL> /opt/arbbot/app
-```
-
-Opsi B, tanpa GitHub dan tanpa gcloud di local: upload zip via SFTP (WinSCP/FileZilla) ke VM, lalu extract.
-
-```bash
-sudo apt-get install -y unzip
-sudo mkdir -p /opt/arbbot/app
-sudo unzip /tmp/arbbot.zip -d /opt/arbbot/app
-```
-
-Opsi C, jika scp OpenSSH tersedia di Windows local.
-
-```bash
-scp -i <PATH_KEY> -r <LOCAL_PROJECT_DIR> <VM_USER>@<VM_EXTERNAL_IP>:/tmp/arbbot
-sudo mkdir -p /opt/arbbot
-sudo mv /tmp/arbbot /opt/arbbot/app
-```
-
-Jika Anda punya gcloud di mesin tertentu, ini tetap valid.
-
-```bash
-gcloud compute scp --recurse . <VM_NAME>:/tmp/arbbot --zone <ZONE>
-```
-
-Di VM.
-
-```bash
-sudo mkdir -p /opt/arbbot
-sudo mv /tmp/arbbot /opt/arbbot/app
-sudo chown -R root:root /opt/arbbot/app
-```
-
-Catatan zona Jakarta: umumnya menggunakan format zone seperti asia-southeast2-a.
-Jika tidak yakin zone instance, cek dari VM:
+Jika zone berbeda, cek cepat dari VM:
 
 ```bash
 curl -H "Metadata-Flavor: Google" \
   http://metadata.google.internal/computeMetadata/v1/instance/zone
 ```
 
-## 4. Bootstrap Runtime
+## D. Step 2 - Update OS dan Paket Dasar
 
-Di VM, masuk ke project root.
+```bash
+sudo apt-get update
+sudo apt-get upgrade -y
+sudo apt-get install -y \
+  git curl ca-certificates unzip \
+  python3 python3-venv python3-pip \
+  unattended-upgrades ufw
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+```
+
+## E. Step 3 - Firewall (Dashboard Public)
+
+Sesuai permintaan Anda, dashboard dibuka ke semua IP.
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 8080/tcp
+sudo ufw --force enable
+sudo ufw status
+```
+
+Di GCP, UFW saja tidak cukup. Tambahkan juga VPC firewall rule (sekali saja).
+
+```bash
+gcloud compute firewall-rules create arbbot-allow-8080 \
+  --allow=tcp:8080 \
+  --direction=INGRESS \
+  --priority=1000 \
+  --source-ranges=0.0.0.0/0
+```
+
+## F. Step 4 - Ambil Source Code
+
+### Opsi direkomendasikan: clone langsung di VM
+
+```bash
+sudo mkdir -p /opt/arbbot
+sudo git clone https://github.com/VinoGowox/ArbBot2.git /opt/arbbot/app
+```
+
+Jika folder sudah ada karena deploy sebelumnya:
+
+```bash
+cd /opt/arbbot/app
+sudo chown -R arbbot:arbbot /opt/arbbot/app
+sudo -u arbbot git -C /opt/arbbot/app pull
+```
+
+## G. Step 5 - Bootstrap Runtime
 
 ```bash
 cd /opt/arbbot/app
 sudo bash deploy/bootstrap_vm.sh
 ```
 
-Lalu edit environment.
+Yang dilakukan script ini:
+
+- install dependency runtime,
+- buat service user arbbot,
+- buat virtualenv,
+- install requirements,
+- buat .env awal dari .env.example jika belum ada.
+
+## H. Step 6 - Konfigurasi .env
 
 ```bash
 sudo nano /opt/arbbot/app/.env
 ```
 
-Minimum settings untuk staging.
+Isi minimum untuk staging:
 
-- MODE=dry-run
-- DASHBOARD_ENABLED=true
-- DASHBOARD_HOST=0.0.0.0
-- DASHBOARD_PORT=8080
-- TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID jika dipakai.
+```dotenv
+MODE=dry-run
+EXCHANGES=binance,bybit,okx,kucoin
+SYMBOLS=BTC/USDT,ETH/USDT
 
-## 5. Install and Start Service
+DASHBOARD_ENABLED=true
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8080
+
+# Optional
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+Simpan file, lalu set permission aman:
+
+```bash
+sudo chown arbbot:arbbot /opt/arbbot/app/.env
+sudo chmod 640 /opt/arbbot/app/.env
+```
+
+## I. Step 7 - Install dan Jalankan Service
 
 ```bash
 cd /opt/arbbot/app
@@ -107,47 +130,24 @@ sudo bash deploy/install_service.sh
 sudo bash deploy/install_logrotate.sh
 ```
 
-Check service.
+## J. Step 8 - Verifikasi Service
 
 ```bash
-systemctl status arbbot.service --no-pager
+systemctl status arbbot.service --no-pager -l
 journalctl -u arbbot.service -n 200 --no-pager
 ```
 
-Jika muncul warning permission terkait /home/arbbot/.config/git saat startup, itu biasanya karena ProtectHome aktif.
-Perbaikan ada pada file service terbaru yang mengatur HOME dan XDG_CONFIG_HOME ke /opt/arbbot/app.
-Setelah update file deploy/arbbot.service, jalankan ulang.
+Health check cepat:
 
 ```bash
-cd /opt/arbbot/app
-sudo bash deploy/install_service.sh
-sudo systemctl restart arbbot.service
-journalctl -u arbbot.service -n 50 --no-pager
+curl -s http://127.0.0.1:8080/metrics.json | head
 ```
 
-## 6. Expose Dashboard Safely
+Dari browser luar VM:
 
-Lebih aman memakai tunnel daripada public access.
+- http://<EXTERNAL_IP_VM>:8080
 
-```bash
-gcloud compute ssh <VM_NAME> --zone <ZONE> -- -L 8080:127.0.0.1:8080
-```
-
-Buka di browser lokal: [http://127.0.0.1:8080](http://127.0.0.1:8080)
-
-## 7. Update Workflow
-
-Saat kode berubah.
-
-```bash
-cd /opt/arbbot/app
-sudo -u arbbot /opt/arbbot/app/.venv/bin/python -m pip install -r requirements.txt
-sudo systemctl restart arbbot.service
-```
-
-## 8. Operational Commands
-
-Pakai helper script.
+## K. Step 9 - Operasional Harian
 
 ```bash
 cd /opt/arbbot/app
@@ -156,16 +156,97 @@ bash deploy/ops.sh logs
 bash deploy/ops.sh restart
 ```
 
-## 9. Go-Live Checklist (After Staging)
-
-- Run dry-run minimal 5 sampai 7 hari tanpa crash.
-- Pastikan konektivitas stabil ke semua exchange.
-- Verifikasi stale opportunity guard dan circuit breaker muncul di log saat kondisi terpicu.
-- Gunakan API key khusus trading, tanpa permission withdraw.
-
-## 10. Rollback and Stop
+## L. Step 10 - Update Kode Tanpa Reinstall Total
 
 ```bash
-sudo systemctl stop arbbot.service
-sudo systemctl disable arbbot.service
+cd /opt/arbbot/app
+sudo chown -R arbbot:arbbot /opt/arbbot/app
+sudo -u arbbot git -C /opt/arbbot/app pull
+sudo -u arbbot /opt/arbbot/app/.venv/bin/python -m pip install -r requirements.txt
+sudo systemctl restart arbbot.service
+systemctl status arbbot.service --no-pager -l
 ```
+
+## M. Troubleshooting Wajib
+
+### 1) Service aktif tapi warning permission git config
+
+Jika ada warning /home/arbbot/.config/git, update ke versi service terbaru lalu reinstall:
+
+```bash
+cd /opt/arbbot/app
+sudo chown -R arbbot:arbbot /opt/arbbot/app
+sudo -u arbbot git -C /opt/arbbot/app pull
+sudo bash deploy/install_service.sh
+sudo systemctl restart arbbot.service
+journalctl -u arbbot.service -n 50 --no-pager
+```
+
+### 2) ModuleNotFoundError (contoh dotenv)
+
+Pastikan service pakai venv bawaan app:
+
+```bash
+sudo -u arbbot /opt/arbbot/app/.venv/bin/python -m pip install -r /opt/arbbot/app/requirements.txt
+sudo systemctl restart arbbot.service
+```
+
+### 3) Dashboard tidak bisa diakses dari luar
+
+- Pastikan .env berisi DASHBOARD_HOST=0.0.0.0
+- Pastikan UFW allow 8080/tcp
+- Pastikan firewall rule GCP mengizinkan tcp:8080
+
+Cek listening port:
+
+```bash
+sudo ss -ltnp | grep 8080
+```
+
+### 4) Service crash loop
+
+```bash
+journalctl -u arbbot.service -n 300 --no-pager
+```
+
+Lalu validasi syntax cepat:
+
+```bash
+cd /opt/arbbot/app
+sudo -u arbbot /opt/arbbot/app/.venv/bin/python -m compileall src
+```
+
+### 5) PermissionError [Errno 13] saat bind dashboard
+
+Error tipikal:
+
+```text
+PermissionError: [Errno 13] Permission denied
+```
+
+Langkah cek cepat:
+
+```bash
+grep -E '^DASHBOARD_(HOST|PORT)=' /opt/arbbot/app/.env
+```
+
+Pastikan:
+
+- DASHBOARD_HOST=0.0.0.0 atau 127.0.0.1
+- DASHBOARD_PORT=8080 (atau port >1024)
+
+Jika Anda memakai port <1024 (misalnya 80), user non-root akan gagal bind.
+Paling aman: ubah ke 8080, lalu restart service.
+
+```bash
+sudo systemctl restart arbbot.service
+journalctl -u arbbot.service -n 80 --no-pager
+```
+
+## N. Go-Live Checklist
+
+- Dry-run 5-7 hari tanpa crash.
+- Log stabil, tidak ada error berulang.
+- Risk guard, cooldown, stale guard tervalidasi.
+- API key trading tanpa izin withdraw.
+- Gunakan MODE=paper hanya untuk simulasi lebih ketat; live trading butuh executor live terpisah.

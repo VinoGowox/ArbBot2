@@ -10,12 +10,24 @@ from dotenv import load_dotenv
 @dataclass
 class BotConfig:
     mode: str
+    execution_style: str
+    maker_side_preference: str
     exchanges: List[str]
     symbols: List[str]
     poll_interval_sec: float
     min_net_spread_pct: float
     slippage_pct: float
     use_dynamic_slippage: bool
+    auto_threshold_enabled: bool
+    auto_threshold_cost_buffer_ratio: float
+    auto_threshold_min_floor_pct: float
+    fill_probability_edge_ref_pct: float
+    queue_risk_sensitivity: float
+    maker_order_timeout_ms: int
+    maker_max_requotes: int
+    maker_requote_step_bps: float
+    maker_min_fill_probability: float
+    maker_requote_fill_boost: float
     max_data_age_ms: int
     max_daily_drawdown_pct: float
     capital_per_exchange_usdt: float
@@ -42,6 +54,7 @@ class BotConfig:
     telegram_bot_token: str
     telegram_chat_id: str
     fees_taker: Dict[str, float]
+    fees_maker: Dict[str, float]
 
 
 def _csv_env(name: str, default: str) -> List[str]:
@@ -87,15 +100,34 @@ def load_config() -> BotConfig:
         )
         for ex in exchanges
     }
+    fees_maker = {
+        ex: _float_env(
+            f"FEE_MAKER_{ex.upper()}",
+            max(0.0, default_fees_taker.get(ex, 0.001) * 0.6),
+        )
+        for ex in exchanges
+    }
 
     return BotConfig(
         mode=os.getenv("MODE", "paper").lower(),
+        execution_style=os.getenv("EXECUTION_STYLE", "taker-taker").strip().lower(),
+        maker_side_preference=os.getenv("MAKER_SIDE_PREFERENCE", "buy").strip().lower(),
         exchanges=exchanges,
         symbols=_csv_env("SYMBOLS", "BTC/USDT,ETH/USDT"),
         poll_interval_sec=_float_env("POLL_INTERVAL_SEC", 2.0),
         min_net_spread_pct=_float_env("MIN_NET_SPREAD_PCT", 0.15),
         slippage_pct=_float_env("SLIPPAGE_PCT", 0.05),
         use_dynamic_slippage=_bool_env("USE_DYNAMIC_SLIPPAGE", True),
+        auto_threshold_enabled=_bool_env("AUTO_THRESHOLD_ENABLED", True),
+        auto_threshold_cost_buffer_ratio=_float_env("AUTO_THRESHOLD_COST_BUFFER_RATIO", 0.25),
+        auto_threshold_min_floor_pct=_float_env("AUTO_THRESHOLD_MIN_FLOOR_PCT", 0.03),
+        fill_probability_edge_ref_pct=_float_env("FILL_PROBABILITY_EDGE_REF_PCT", 0.12),
+        queue_risk_sensitivity=_float_env("QUEUE_RISK_SENSITIVITY", 1.0),
+        maker_order_timeout_ms=_int_env("MAKER_ORDER_TIMEOUT_MS", 1200),
+        maker_max_requotes=_int_env("MAKER_MAX_REQUOTES", 2),
+        maker_requote_step_bps=_float_env("MAKER_REQUOTE_STEP_BPS", 0.8),
+        maker_min_fill_probability=_float_env("MAKER_MIN_FILL_PROBABILITY", 0.45),
+        maker_requote_fill_boost=_float_env("MAKER_REQUOTE_FILL_BOOST", 0.12),
         max_data_age_ms=_int_env("MAX_DATA_AGE_MS", 3500),
         max_daily_drawdown_pct=_float_env("MAX_DAILY_DRAWDOWN_PCT", 1.0),
         capital_per_exchange_usdt=_float_env("CAPITAL_PER_EXCHANGE_USDT", 1000.0),
@@ -122,4 +154,5 @@ def load_config() -> BotConfig:
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", "").strip(),
         fees_taker=fees_taker,
+        fees_maker=fees_maker,
     )

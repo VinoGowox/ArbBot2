@@ -13,6 +13,9 @@ Fitur utama.
 - Hybrid market data: Binance dan Bybit WebSocket ticker dengan REST fallback otomatis.
 - Filter kualitas sinyal berbasis orderbook depth (impact price).
 - Kalkulasi net spread dengan taker fee per exchange (resolved dari metadata exchange dengan fallback env) dan slippage dinamis dari depth orderbook.
+- Mode eksekusi maker-taker (post-only simulation) dengan timeout, cancel-requote, dan fallback risk checks.
+- Estimator fill probability dan queue risk sederhana untuk maker leg.
+- Auto-threshold dinamis berbasis fee + slippage real-time per exchange.
 - Risk controls: daily drawdown limit, min notional, max position, staleness guard.
 - Circuit breaker berdasarkan consecutive failures.
 - Cooldown per route arbitrage untuk menghindari overtrading.
@@ -68,12 +71,21 @@ Artefak deploy.
 
 - MODE=paper: simulasi perpindahan balance antar exchange dan PnL.
 - MODE=dry-run: tidak mengubah balance, tetapi membuat payload order buy/sell seolah siap dikirim ke exchange.
+- EXECUTION_STYLE=taker-taker: model lama, kedua sisi taker.
+- EXECUTION_STYLE=maker-taker: satu sisi maker (post-only), satu sisi taker (hedge).
 
 ## Parameter Penting Untuk Tuning
 
 - MIN_NET_SPREAD_PCT: filter minimum net spread.
 - SLIPPAGE_PCT: buffer slippage konservatif.
 - USE_DYNAMIC_SLIPPAGE: aktifkan slippage dinamis dari impact orderbook per peluang.
+- AUTO_THRESHOLD_ENABLED: aktifkan minimum net spread dinamis berbasis biaya real-time.
+- AUTO_THRESHOLD_COST_BUFFER_RATIO: faktor buffer tambahan terhadap total biaya (fee+slippage).
+- AUTO_THRESHOLD_MIN_FLOOR_PCT: lantai minimum threshold dinamis.
+- FEE_MAKER_BINANCE/BYBIT/OKX/KUCOIN dan FEE_TAKER_BINANCE/BYBIT/OKX/KUCOIN: override fee maker/taker per exchange sesuai akun Anda.
+- MAKER_ORDER_TIMEOUT_MS, MAKER_MAX_REQUOTES, MAKER_REQUOTE_STEP_BPS: kontrol perilaku post-only + requote.
+- MAKER_MIN_FILL_PROBABILITY, MAKER_REQUOTE_FILL_BOOST: tuning estimator fill untuk siklus requote.
+- QUEUE_RISK_SENSITIVITY, FILL_PROBABILITY_EDGE_REF_PCT: tuning model queue risk/fill probability.
 - ENABLE_WEBSOCKET_MARKET_DATA: aktifkan mode hybrid WS+REST (saat ini WS untuk Binance).
 - WEBSOCKET_STALE_MS: batas usia data WS sebelum fallback ke REST.
 - FEE_TAKER_BINANCE, FEE_TAKER_BYBIT, FEE_TAKER_OKX, FEE_TAKER_KUCOIN: override fee taker per exchange bila ingin memakai angka akun Anda.

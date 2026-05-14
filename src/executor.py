@@ -20,6 +20,8 @@ class RiskState:
     trades_executed: int = 0
     trades_failed: int = 0
     consecutive_failures: int = 0
+    maker_timeouts: int = 0
+    maker_requotes: int = 0
 
 
 class PaperExecutor:
@@ -85,15 +87,143 @@ class PaperExecutor:
         if sell_bal.base_free.get(base, 0.0) < opp.quantity:
             return self._failed("insufficient_base_on_sell_exchange", opp)
 
+        if opp.execution_style == "maker-taker":
+            return self._execute_maker_taker(
+                opp=opp,
+                route_key=route_key,
+                now_ts=now_ts,
+                base=base,
+                buy_bal=buy_bal,
+                sell_bal=sell_bal,
+                buy_cost=buy_cost,
+            )
+
         buy_fee = self.config.fees_taker.get(opp.buy_exchange, 0.001)
         sell_fee = self.config.fees_taker.get(opp.sell_exchange, 0.001)
-
         quote_spent = buy_cost * (1.0 + buy_fee)
         quote_received = (opp.quantity * opp.sell_price) * (1.0 - sell_fee)
         pnl = quote_received - quote_spent
+        return self._finalize_execution(
+            opp=opp,
+            route_key=route_key,
+            now_ts=now_ts,
+            base=base,
+            buy_bal=buy_bal,
+            sell_bal=sell_bal,
+            quote_spent=quote_spent,
+            quote_received=quote_received,
+            pnl=pnl,
+            reason_ok="ok",
+            dry_reason="dry_run_submitted",
+            payload=self._build_order_payload(opp),
+        )
 
+    def _execute_maker_taker(
+        self,
+        opp: Opportunity,
+        route_key: str,
+        now_ts: float,
+        base: str,
+        buy_bal: ExchangeBalance,
+        sell_bal: ExchangeBalance,
+        buy_cost: float,
+    ) -> TradeResult:
+        total_attempts = max(1, 1 + self.config.maker_max_requotes)
+        current_fill_probability = _clamp(opp.fill_probability, 0.0, 0.99)
+        requotes = 0
+        filled = False
+
+        for attempt in range(1, total_attempts + 1):
+            timed_out = opp.expected_fill_time_ms > self.config.maker_order_timeout_ms
+            if current_fill_probability >= self.config.maker_min_fill_probability and not timed_out:
+                filled = True
+                break
+            if attempt == total_attempts:
+                break
+            requotes += 1
+            self.risk.maker_requotes += 1
+            current_fill_probability = _clamp(
+                current_fill_probability + self.config.maker_requote_fill_boost,
+                0.0,
+                0.99,
+            )
+
+        if not filled:
+            self.risk.maker_timeouts += 1
+            self.last_order_payload = self._build_order_payload(
+                opp,
+                maker_post_only=True,
+                maker_timeout_ms=self.config.maker_order_timeout_ms,
+                maker_requotes=requotes,
+                maker_fill_probability=current_fill_probability,
+                maker_result="cancel_timeout",
+            )
+            return self._register_failure(
+                success=False,
+                reason="maker_timeout_cancelled",
+                symbol=opp.symbol,
+                buy_exchange=opp.buy_exchange,
+                sell_exchange=opp.sell_exchange,
+                quantity=opp.quantity,
+                realized_pnl_usdt=0.0,
+            )
+
+        buy_fee = opp.buy_fee_pct / 100.0
+        sell_fee = opp.sell_fee_pct / 100.0
+        quote_spent = buy_cost * (1.0 + buy_fee)
+        quote_received = (opp.quantity * opp.sell_price) * (1.0 - sell_fee)
+        requote_penalty = buy_cost * (self.config.maker_requote_step_bps / 10000.0) * requotes
+        pnl = quote_received - quote_spent - requote_penalty
+        if pnl <= 0:
+            return self._register_failure(
+                success=False,
+                reason="requote_eroded_edge",
+                symbol=opp.symbol,
+                buy_exchange=opp.buy_exchange,
+                sell_exchange=opp.sell_exchange,
+                quantity=opp.quantity,
+                realized_pnl_usdt=0.0,
+            )
+
+        return self._finalize_execution(
+            opp=opp,
+            route_key=route_key,
+            now_ts=now_ts,
+            base=base,
+            buy_bal=buy_bal,
+            sell_bal=sell_bal,
+            quote_spent=quote_spent,
+            quote_received=quote_received,
+            pnl=pnl,
+            reason_ok="maker_taker_ok",
+            dry_reason="dry_run_maker_taker_submitted",
+            payload=self._build_order_payload(
+                opp,
+                maker_post_only=True,
+                maker_timeout_ms=self.config.maker_order_timeout_ms,
+                maker_requotes=requotes,
+                maker_fill_probability=current_fill_probability,
+                maker_result="filled",
+            ),
+        )
+
+    def _finalize_execution(
+        self,
+        opp: Opportunity,
+        route_key: str,
+        now_ts: float,
+        base: str,
+        buy_bal: ExchangeBalance,
+        sell_bal: ExchangeBalance,
+        quote_spent: float,
+        quote_received: float,
+        pnl: float,
+        reason_ok: str,
+        dry_reason: str,
+        payload: Dict[str, object],
+    ) -> TradeResult:
         if self.mode == "dry-run":
-            self.last_order_payload = self._build_order_payload(opp)
+            self.last_order_payload = payload
             self.risk.trades_executed += 1
             self.risk.consecutive_failures = 0
             self.last_trade_at[route_key] = now_ts
@@ -105,7 +235,7 @@ class PaperExecutor:
             )
             return TradeResult(
                 success=True,
-                reason="dry_run_submitted",
+                reason=dry_reason,
                 symbol=opp.symbol,
                 buy_exchange=opp.buy_exchange,
                 sell_exchange=opp.sell_exchange,
@@ -115,10 +245,10 @@ class PaperExecutor:
 
         buy_bal.quote_free -= quote_spent
         buy_bal.base_free[base] = buy_bal.base_free.get(base, 0.0) + opp.quantity
-
         sell_bal.base_free[base] = sell_bal.base_free.get(base, 0.0) - opp.quantity
         sell_bal.quote_free += quote_received
 
+        self.last_order_payload = payload
         self.risk.realized_pnl_usdt += pnl
         self.risk.trades_executed += 1
         self.risk.consecutive_failures = 0
@@ -126,8 +256,9 @@ class PaperExecutor:
         self._evaluate_drawdown_guard()
 
         logger.info(
-            "PAPER EXECUTED | %s | buy=%s @ %.2f | sell=%s @ %.2f | qty=%.6f | pnl=%.4f",
+            "PAPER EXECUTED | %s | style=%s | buy=%s @ %.2f | sell=%s @ %.2f | qty=%.6f | pnl=%.4f",
             opp.symbol,
+            opp.execution_style,
             opp.buy_exchange,
             opp.buy_price,
             opp.sell_exchange,
@@ -138,7 +269,7 @@ class PaperExecutor:
 
         return TradeResult(
             success=True,
-            reason="ok",
+            reason=reason_ok,
             symbol=opp.symbol,
             buy_exchange=opp.buy_exchange,
             sell_exchange=opp.sell_exchange,
@@ -260,6 +391,8 @@ class PaperExecutor:
             "trades_executed": self.risk.trades_executed,
             "trades_failed": self.risk.trades_failed,
             "consecutive_failures": self.risk.consecutive_failures,
+            "maker_timeouts": self.risk.maker_timeouts,
+            "maker_requotes": self.risk.maker_requotes,
             "blocked": int(self.risk.blocked),
             "blocked_reason": self.risk.blocked_reason,
         }
@@ -279,7 +412,15 @@ class PaperExecutor:
     def _route_key(self, opp: Opportunity) -> str:
         return f"{opp.symbol}:{opp.buy_exchange}->{opp.sell_exchange}"
 
-    def _build_order_payload(self, opp: Opportunity) -> Dict[str, object]:
+    def _build_order_payload(
+        self,
+        opp: Opportunity,
+        maker_post_only: bool = False,
+        maker_timeout_ms: int = 0,
+        maker_requotes: int = 0,
+        maker_fill_probability: float = 1.0,
+        maker_result: str = "n/a",
+    ) -> Dict[str, object]:
         return {
             "buy": {
                 "exchange": opp.buy_exchange,
@@ -288,7 +429,8 @@ class PaperExecutor:
                 "type": "limit",
                 "amount": round(opp.quantity, 8),
                 "price": round(opp.buy_price, 6),
-                "timeInForce": "IOC",
+                "timeInForce": "PO" if maker_post_only and opp.maker_side == "buy" else "IOC",
+                "postOnly": bool(maker_post_only and opp.maker_side == "buy"),
             },
             "sell": {
                 "exchange": opp.sell_exchange,
@@ -297,12 +439,28 @@ class PaperExecutor:
                 "type": "limit",
                 "amount": round(opp.quantity, 8),
                 "price": round(opp.sell_price, 6),
-                "timeInForce": "IOC",
+                "timeInForce": "PO" if maker_post_only and opp.maker_side == "sell" else "IOC",
+                "postOnly": bool(maker_post_only and opp.maker_side == "sell"),
             },
             "meta": {
+                "execution_style": opp.execution_style,
+                "maker_exchange": opp.maker_exchange,
+                "taker_exchange": opp.taker_exchange,
+                "maker_side": opp.maker_side,
+                "taker_side": opp.taker_side,
+                "maker_timeout_ms": maker_timeout_ms,
+                "maker_requotes": maker_requotes,
+                "maker_fill_probability": round(maker_fill_probability, 4),
+                "maker_result": maker_result,
+                "dynamic_threshold_pct": round(opp.dynamic_threshold_pct, 6),
+                "queue_risk_score": round(opp.queue_risk_score, 6),
                 "expected_profit_usdt": round(opp.expected_profit_usdt, 6),
                 "net_spread_pct": round(opp.net_spread_pct, 6),
                 "buy_price_source": opp.buy_price_source,
                 "sell_price_source": opp.sell_price_source,
             },
         }
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))

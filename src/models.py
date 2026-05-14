@@ -23,8 +23,13 @@ class TickerSnapshot:
 @dataclass
 class Opportunity:
     symbol: str
+    execution_style: str
     buy_exchange: str
     sell_exchange: str
+    maker_exchange: str
+    taker_exchange: str
+    maker_side: str
+    taker_side: str
     buy_price: float
     sell_price: float
     buy_price_source: str
@@ -33,6 +38,12 @@ class Opportunity:
     sell_fee_pct: float
     buy_slippage_pct: float
     sell_slippage_pct: float
+    fee_cost_pct: float
+    slippage_cost_pct: float
+    dynamic_threshold_pct: float
+    queue_risk_score: float
+    fill_probability: float
+    expected_fill_time_ms: int
     gross_spread_pct: float
     net_spread_pct: float
     quantity: float
