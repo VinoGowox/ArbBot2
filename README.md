@@ -18,6 +18,7 @@ Fitur utama.
 - Rebalancing inventory base asset antar exchange (simulasi paper).
 - Alert Telegram untuk trade, rebalance, dan risk events.
 - Dashboard realtime berbasis HTTP untuk monitoring cycle, peluang, dan balance.
+- Dashboard menampilkan statistik alasan penolakan peluang per kategori.
 - Mode dry-run untuk simulasi payload order semi-live (tanpa kirim order nyata).
 - Paper executor dengan pencatatan PnL per trade.
 - Siap deploy di cloud (AWS/GCP/Azure) sebagai process service.
@@ -87,6 +88,16 @@ Jika DASHBOARD_ENABLED=true, buka dashboard di [http://127.0.0.1:8080](http://12
 Endpoint JSON.
 
 - /metrics.json
+
+Kategori alasan penolakan yang tampil di dashboard/log antara lain.
+
+- missing_snapshot
+- stale_snapshot
+- insufficient_fresh_markets
+- depth_liquidity_missing
+- net_spread_below_threshold
+- insufficient_trade_size
+- non_positive_expected_profit
 
 ## Telegram Alert (Opsional)
 

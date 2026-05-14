@@ -28,6 +28,8 @@ class RuntimeState:
             "opportunity_count": 0,
             "best_opportunity": None,
           "last_order_payload": {},
+          "rejections_last_cycle": {},
+          "rejections_total": {},
             "metrics": {},
             "balances": {},
         }
@@ -172,6 +174,14 @@ def _dashboard_html() -> str:
         <div class=\"label\">Last Order Payload</div>
         <pre id=\"order\">-</pre>
       </div>
+      <div class=\"card\">
+        <div class=\"label\">Rejections (Last Cycle)</div>
+        <pre id=\"reject-last\">-</pre>
+      </div>
+      <div class=\"card\">
+        <div class=\"label\">Rejections (Total)</div>
+        <pre id=\"reject-total\">-</pre>
+      </div>
     </div>
   </div>
   <script>
@@ -193,6 +203,8 @@ def _dashboard_html() -> str:
         document.getElementById('best').textContent = JSON.stringify(data.best_opportunity || {}, null, 2);
         document.getElementById('balances').textContent = JSON.stringify(data.balances || {}, null, 2);
         document.getElementById('order').textContent = JSON.stringify(data.last_order_payload || {}, null, 2);
+        document.getElementById('reject-last').textContent = JSON.stringify(data.rejections_last_cycle || {}, null, 2);
+        document.getElementById('reject-total').textContent = JSON.stringify(data.rejections_total || {}, null, 2);
       } catch (err) {
         document.getElementById('event').textContent = 'dashboard fetch error';
       }

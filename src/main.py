@@ -39,12 +39,22 @@ def run() -> None:
     executor = PaperExecutor(cfg)
     notifier = TelegramNotifier(cfg)
     runtime = RuntimeState(cfg.mode, cfg.exchanges, cfg.symbols)
-    dashboard = DashboardServer(cfg.dashboard_host, cfg.dashboard_port, runtime) if cfg.dashboard_enabled else None
+    dashboard = None
     last_status_ts = 0.0
     blocked_alert_sent = False
 
-    if dashboard is not None:
-        dashboard.start()
+    if cfg.dashboard_enabled:
+        try:
+            dashboard = DashboardServer(cfg.dashboard_host, cfg.dashboard_port, runtime)
+            dashboard.start()
+        except OSError as exc:
+            logger.error(
+                "Dashboard disabled. Failed to bind %s:%d | %s",
+                cfg.dashboard_host,
+                cfg.dashboard_port,
+                exc,
+            )
+            dashboard = None
 
     logger.info(
         "Bot started | exchanges=%s | symbols=%s | min_net_spread=%.4f%%",
@@ -63,11 +73,14 @@ def run() -> None:
             cycles += 1
             market = gateway.fetch_all_tickers(cfg.symbols)
             opportunities = engine.find_opportunities(market)
+            rejection_stats = engine.get_rejection_counts()
             runtime.update(
                 {
                     "cycle": cycles,
                     "opportunity_count": len(opportunities),
                     "last_event": "scan_completed",
+                    "rejections_last_cycle": rejection_stats["last_cycle"],
+                    "rejections_total": rejection_stats["total"],
                 }
             )
 
@@ -135,13 +148,14 @@ def run() -> None:
                     }
                 )
                 logger.info(
-                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s)",
+                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s",
                     metrics["realized_pnl_usdt"],
                     metrics["trades_executed"],
                     metrics["trades_failed"],
                     metrics["consecutive_failures"],
                     metrics["blocked"],
                     metrics["blocked_reason"],
+                    rejection_stats["last_cycle"],
                 )
                 last_status_ts = now_ts
 
