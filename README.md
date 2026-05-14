@@ -10,6 +10,7 @@ Bot ini dirancang untuk menangkap peluang cross-exchange spot arbitrage antara 4
 Fitur utama.
 
 - Scanner multi-exchange untuk BTC/USDT dan ETH/USDT.
+- Hybrid market data: Binance WebSocket (bookTicker) dengan REST fallback otomatis.
 - Filter kualitas sinyal berbasis orderbook depth (impact price).
 - Kalkulasi net spread dengan taker fee per exchange (resolved dari metadata exchange dengan fallback env) dan slippage dinamis dari depth orderbook.
 - Risk controls: daily drawdown limit, min notional, max position, staleness guard.
@@ -73,6 +74,8 @@ Artefak deploy.
 - MIN_NET_SPREAD_PCT: filter minimum net spread.
 - SLIPPAGE_PCT: buffer slippage konservatif.
 - USE_DYNAMIC_SLIPPAGE: aktifkan slippage dinamis dari impact orderbook per peluang.
+- ENABLE_WEBSOCKET_MARKET_DATA: aktifkan mode hybrid WS+REST (saat ini WS untuk Binance).
+- WEBSOCKET_STALE_MS: batas usia data WS sebelum fallback ke REST.
 - FEE_TAKER_BINANCE, FEE_TAKER_BYBIT, FEE_TAKER_OKX, FEE_TAKER_KUCOIN: override fee taker per exchange bila ingin memakai angka akun Anda.
 - ENABLE_ORDERBOOK_DEPTH: aktifkan perhitungan harga impact dari orderbook.
 - REQUIRE_DEPTH_LIQUIDITY: hanya terima sinyal yang punya depth valid.
@@ -90,6 +93,8 @@ Jika DASHBOARD_ENABLED=true, buka dashboard di [http://127.0.0.1:8080](http://12
 Endpoint JSON.
 
 - /metrics.json
+
+Dashboard juga menampilkan sumber data market per cycle (`ws` vs `rest`) agar transparan apakah stream aktif atau fallback.
 
 Kategori alasan penolakan yang tampil di dashboard/log antara lain.
 

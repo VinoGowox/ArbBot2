@@ -17,6 +17,7 @@ class TickerSnapshot:
     ask_depth_price: float = 0.0
     bid_depth_base: float = 0.0
     ask_depth_base: float = 0.0
+    market_data_source: str = "rest"
 
 
 @dataclass

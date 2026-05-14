@@ -78,6 +78,14 @@ def run() -> None:
         while not STOP:
             cycles += 1
             market = gateway.fetch_all_tickers(cfg.symbols)
+            source_counts = {"ws": 0, "rest": 0}
+            for by_symbol in market.values():
+                for snap in by_symbol.values():
+                    if snap.market_data_source == "ws":
+                        source_counts["ws"] += 1
+                    else:
+                        source_counts["rest"] += 1
+
             opportunities = engine.find_opportunities(market)
             rejection_stats = engine.get_rejection_counts()
             spread_dist = engine.get_net_spread_distribution()
@@ -89,6 +97,7 @@ def run() -> None:
                     "rejections_last_cycle": rejection_stats["last_cycle"],
                     "rejections_total": rejection_stats["total"],
                     "net_spread_distribution": spread_dist,
+                    "market_data_source_counts": source_counts,
                 }
             )
 
@@ -156,7 +165,7 @@ def run() -> None:
                     }
                 )
                 logger.info(
-                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s",
+                    "Status | pnl=%.4f | ok=%d | fail=%d | streak=%d | blocked=%d(%s) | reject_last=%s | spread_dist=%s | market_src=%s",
                     metrics["realized_pnl_usdt"],
                     metrics["trades_executed"],
                     metrics["trades_failed"],
@@ -165,6 +174,7 @@ def run() -> None:
                     metrics["blocked_reason"],
                     rejection_stats["last_cycle"],
                     spread_dist,
+                    source_counts,
                 )
                 last_status_ts = now_ts
 

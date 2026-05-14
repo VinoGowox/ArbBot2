@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import threading
+import time
+from typing import Dict, List
+
+import websockets
+
+logger = logging.getLogger(__name__)
+
+
+class BinanceBookTickerStream:
+    def __init__(self, symbols: List[str]) -> None:
+        self.symbols = symbols
+        self._data: Dict[str, Dict[str, float | int]] = {}
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def get(self, symbol: str) -> Dict[str, float | int] | None:
+        with self._lock:
+            row = self._data.get(symbol)
+            if row is None:
+                return None
+            return dict(row)
+
+    def _run_loop(self) -> None:
+        try:
+            asyncio.run(self._consume())
+        except Exception as exc:
+            logger.warning("Binance WS loop stopped: %s", exc)
+
+    async def _consume(self) -> None:
+        streams = []
+        for symbol in self.symbols:
+            stream_symbol = symbol.replace("/", "").lower()
+            streams.append(f"{stream_symbol}@bookTicker")
+
+        if not streams:
+            return
+
+        url = f"wss://stream.binance.com:9443/stream?streams={'/'.join(streams)}"
+
+        while not self._stop_event.is_set():
+            try:
+                async with websockets.connect(url, ping_interval=20, ping_timeout=20) as ws:
+                    logger.info("Binance WS connected for %d symbols", len(streams))
+                    while not self._stop_event.is_set():
+                        raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                        payload = json.loads(raw)
+                        data = payload.get("data", {})
+                        symbol_raw = str(data.get("s") or "").upper()
+                        if not symbol_raw:
+                            continue
+
+                        symbol = f"{symbol_raw[:-4]}/USDT" if symbol_raw.endswith("USDT") else symbol_raw
+                        bid = float(data.get("b") or 0.0)
+                        ask = float(data.get("a") or 0.0)
+                        if bid <= 0 or ask <= 0:
+                            continue
+
+                        ts = int(data.get("E") or int(time.time() * 1000))
+                        with self._lock:
+                            self._data[symbol] = {
+                                "bid": bid,
+                                "ask": ask,
+                                "timestamp_ms": ts,
+                            }
+            except Exception as exc:
+                logger.debug("Binance WS reconnecting after error: %s", exc)
+                await asyncio.sleep(2)

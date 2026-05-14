@@ -8,6 +8,7 @@ from typing import Dict, List
 import ccxt
 
 from .config import BotConfig
+from .market_ws import BinanceBookTickerStream
 from .models import TickerSnapshot
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,10 @@ class ExchangeGateway:
     def __init__(self, config: BotConfig) -> None:
         self.config = config
         self.clients = self._init_clients(config.exchanges)
+        self.binance_ws: BinanceBookTickerStream | None = None
+        if config.enable_websocket_market_data and "binance" in self.clients:
+            self.binance_ws = BinanceBookTickerStream(config.symbols)
+            self.binance_ws.start()
 
     def _init_clients(self, exchanges: List[str]) -> Dict[str, ccxt.Exchange]:
         clients: Dict[str, ccxt.Exchange] = {}
@@ -130,15 +135,36 @@ class ExchangeGateway:
         symbol: str,
     ) -> TickerSnapshot | None:
         try:
-            ticker = client.fetch_ticker(symbol)
-            bid = float(ticker.get("bid") or 0.0)
-            ask = float(ticker.get("ask") or 0.0)
-            if bid <= 0 or ask <= 0:
-                return None
+            bid = 0.0
+            ask = 0.0
+            bid_volume = 0.0
+            ask_volume = 0.0
+            timestamp_ms = int(time.time() * 1000)
+            market_data_source = "rest"
 
-            bid_volume = float(ticker.get("bidVolume") or 0.0)
-            ask_volume = float(ticker.get("askVolume") or 0.0)
-            timestamp_ms = int(ticker.get("timestamp") or int(time.time() * 1000))
+            ws_used = False
+            if exchange_name == "binance" and self.binance_ws is not None:
+                ws_row = self.binance_ws.get(symbol)
+                if ws_row is not None:
+                    ws_ts = int(ws_row.get("timestamp_ms") or 0)
+                    if (int(time.time() * 1000) - ws_ts) <= self.config.websocket_stale_ms:
+                        bid = float(ws_row.get("bid") or 0.0)
+                        ask = float(ws_row.get("ask") or 0.0)
+                        timestamp_ms = ws_ts
+                        ws_used = bid > 0 and ask > 0
+                        if ws_used:
+                            market_data_source = "ws"
+
+            if not ws_used:
+                ticker = client.fetch_ticker(symbol)
+                bid = float(ticker.get("bid") or 0.0)
+                ask = float(ticker.get("ask") or 0.0)
+                if bid <= 0 or ask <= 0:
+                    return None
+
+                bid_volume = float(ticker.get("bidVolume") or 0.0)
+                ask_volume = float(ticker.get("askVolume") or 0.0)
+                timestamp_ms = int(ticker.get("timestamp") or int(time.time() * 1000))
 
             bid_depth_price = 0.0
             ask_depth_price = 0.0
@@ -179,12 +205,15 @@ class ExchangeGateway:
                 ask_depth_price=ask_depth_price,
                 bid_depth_base=bid_depth_base,
                 ask_depth_base=ask_depth_base,
+                market_data_source=market_data_source,
             )
         except Exception as exc:
             logger.debug("fetch_ticker failed | %s %s | %s", exchange_name, symbol, exc)
             return None
 
     def close(self) -> None:
+        if self.binance_ws is not None:
+            self.binance_ws.stop()
         for client in self.clients.values():
             try:
                 client.close()
